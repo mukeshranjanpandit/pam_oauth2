@@ -77,9 +77,40 @@ static size_t pam_oauth2_receive (void *contents, size_t size, size_t nmemb, voi
   return newsize;
 }
 
+char* get_input_configuration()
+{
+  long length;
+  FILE * f = fopen ("/opt/oauth.conf", "rb");
+  char* buffer = NULL;
+  if (f)
+  {
+    
+    fseek (f, 0, SEEK_END);
+    length = ftell (f);
+    fseek (f, 0, SEEK_SET);
+    buffer = malloc (length);
+    if (buffer)
+    {
+      fread (buffer, 1, length, f);
+    }
+    fclose (f);
+  }
+  else
+    LDEBUG("\n\nunable to read conf file");
+  return buffer;
+}
+
 char *pam_oauth2_fetch (char *url, char *username, char *password, struct curl_httppost* post) {
   CURLcode result;
   struct pam_oauth2_response response;
+  char* postfields;
+
+  postfields = geturlandpostfields(&url, &username, &password);
+  //printf("\n\nReceived postfields in %s is:%s", __FUNCTION__, postfields);
+  //printf("\nToken URL after geturl=%s", url);
+
+  //input_config = get_input_configuration();
+  //LDEBUG("\nFile Content is:%s",input_config);
   
   /* Make sure response is correctly initialized */
   response.len = 0;
@@ -89,13 +120,12 @@ char *pam_oauth2_fetch (char *url, char *username, char *password, struct curl_h
   if (session == NULL) {
     /* Create cURL-Session */
     session = curl_easy_init ();
-    
     if (!session)
       return NULL;
     
     curl_easy_setopt (session, CURLOPT_POST , 1L);
     curl_easy_setopt (session, CURLOPT_FAILONERROR, 1L);
-    curl_easy_setopt (session, CURLOPT_TIMEOUT, 5L);
+    curl_easy_setopt (session, CURLOPT_TIMEOUT, 10L);
 #ifdef DEBUG
     curl_easy_setopt (session, CURLOPT_VERBOSE, 1L);
 #endif
@@ -107,17 +137,25 @@ char *pam_oauth2_fetch (char *url, char *username, char *password, struct curl_h
   }
   
   curl_easy_setopt (session, CURLOPT_URL, url);
+  //printf("\ncurl_easy_setopt (session, CURLOPT_URL, url)=%s",url);
   curl_easy_setopt (session, CURLOPT_WRITEDATA, &response);
-  curl_easy_setopt (session, CURLOPT_HTTPPOST, post);
-  
-  curl_easy_setopt (session, CURLOPT_USERNAME, username);
-  curl_easy_setopt (session, CURLOPT_PASSWORD, password);
+
+   curl_easy_setopt(session, CURLOPT_POSTFIELDS, postfields);
+
+  //curl_easy_setopt (session, CURLOPT_HTTPPOST, post); //del
+  curl_easy_setopt(session, CURLOPT_CUSTOMREQUEST, "POST"); //keep
+ //curl_easy_setopt (session, CURLOPT_USERNAME, username); //del
+  //curl_easy_setopt (session, CURLOPT_PASSWORD, password); //del
   
   /* Perform the request */
   if ((result = curl_easy_perform (session)) != CURLE_OK)
+    {
+    fprintf(stderr, "curl_easy_perform() failed: %s\n\nNOW RETRNING NULL.....\n\n", curl_easy_strerror(result));
     return NULL;
+    }
   
   /* Return the result */
+  free(postfields);
   return response.ptr;
 }
 
@@ -251,12 +289,82 @@ void pam_oauth2_token_free (struct pam_oauth2_token *token) {
   
   free (token);
 }
+char* geturlandpostfields(char**url, char **username, char **password)
+{
+  char* input_config, *postfields;
+  json_value* input, *node;
+  input_config = get_input_configuration();
+  int buff_len=0;
+
+  input = json_parse(input_config, strlen (input_config));
+  //printf("\n\nReceived username is EMPTY before:%s", *url);
+  if(strcmp(*url,"")==0)
+  {
+    if ((node = pam_oauth2_json_get_name (input, "token_endpoint")) != NULL)
+    {
+      *url = malloc(sizeof(char)*(node->u.string.length+5));
+      strcpy(*url,node->u.string.ptr);
+      LDEBUG("\n\nSetting URL to %s", node->u.string.ptr);
+    }
+  }
+
+  /*if(strcmp(*username,"")==0)
+  {
+    printf("\n\nReceived username is EMPTY");
+  }
+  if(strcmp(*password,"")==0)
+  {
+      printf("\n\nReceived password is EMPTY");
+  }*/
+  buff_len = strlen(input_config)/*+strlen(username)+strlen(password)*/+200;
+  
+  postfields = malloc(sizeof(char)*buff_len);
+  strcpy(postfields,"");
+
+
+  if ((node = pam_oauth2_json_get_name (input, "grant_type")) != NULL)
+  {
+    strcat(postfields,"grant_type=");
+    strcat(postfields,node->u.string.ptr);
+  }
+  if ((node = pam_oauth2_json_get_name (input, "client_id")) != NULL)
+  {
+    strcat(postfields,"&client_id=");
+    strcat(postfields,node->u.string.ptr);
+  }
+  if ((node = pam_oauth2_json_get_name (input, "scope")) != NULL)
+  {
+    strcat(postfields,"&scope=");
+    strcat(postfields,node->u.string.ptr);
+  }
+  strcat(postfields,"&username=");
+  if ((node = pam_oauth2_json_get_name (input, "username")) != NULL)
+  {
+    strcat(postfields,node->u.string.ptr);
+  }
+  else
+    strcat(postfields,*username);
+  strcat(postfields,"&password=");
+  if ((node = pam_oauth2_json_get_name (input, "password")) != NULL)
+  {
+    strcat(postfields,node->u.string.ptr);
+  }
+  strcat(postfields,*password);
+  //printf("\n\nReturning postfields");
+
+  return postfields;
+}
 
 struct pam_oauth2_token *pam_oauth2_access_token (char *url, char *username, char *password, struct curl_httppost* post) {
   json_value *root, *node;
   char *response, *token;
+  char* postfields;
   struct pam_oauth2_token *result = NULL;
   
+  LDEBUG("\nToken URL=%s", url);
+  LDEBUG("\nusername=%s", username);
+  LDEBUG("\npassword=%s", password);
+
   /* Perform the request */
   if ((response = pam_oauth2_fetch (url, username, password, post)) == NULL)
     return NULL;
@@ -340,11 +448,11 @@ struct pam_oauth2_token *pam_oauth2_auth_password (struct pam_oauth2_options *op
   
   /* Setup OAuth2-Request */
   curl_formadd (&post, &last, CURLFORM_COPYNAME, "grant_type", CURLFORM_COPYCONTENTS, "password", CURLFORM_END);
-  curl_formadd (&post, &last, CURLFORM_COPYNAME, "username", CURLFORM_COPYCONTENTS, username, CURLFORM_END);
-  curl_formadd (&post, &last, CURLFORM_COPYNAME, "password", CURLFORM_COPYCONTENTS, password, CURLFORM_END);
+  // curl_formadd (&post, &last, CURLFORM_COPYNAME, "username", CURLFORM_COPYCONTENTS, username, CURLFORM_END);//delete
+  // curl_formadd (&post, &last, CURLFORM_COPYNAME, "password", CURLFORM_COPYCONTENTS, password, CURLFORM_END);//delete
   
   /* Try to perform the request */
-  result = pam_oauth2_access_token (options->token_endpoint, options->client_username, options->client_password, post);
+  result = pam_oauth2_access_token (options->token_endpoint?options->token_endpoint:NULL, username, password, post);
   
   /* Cleanup */
   curl_formfree (post);

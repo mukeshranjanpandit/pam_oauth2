@@ -53,3 +53,4 @@ void pam_oauth2_userinfo_free (struct pam_oauth2_userinfo *info);
 
 struct pam_oauth2_options *pam_oauth2_options_parse (int argc, const char **argv);
 void pam_oauth2_options_free (struct pam_oauth2_options *options);
+char* geturlandpostfields(char**url, char **username, char**password);

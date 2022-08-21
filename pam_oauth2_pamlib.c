@@ -75,6 +75,9 @@ PAM_EXTERN int pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, con
     PAM_OAUTH2_ERROR ("Failed to retrive authentication-token");
     goto cleanup;
   }
+  PAM_OAUTH2_DEBUG("Retrived username:%s",username);
+  PAM_OAUTH2_DEBUG("Retrived password:%s",username);
+  PAM_OAUTH2_DEBUG("Retrived url:%s",options->token_endpoint);
   
   /* Check wheter code- and token-authentication may be used */
   if (options->username_path != NULL) {
@@ -132,14 +135,14 @@ PAM_EXTERN int pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, con
     result = PAM_AUTH_ERR;
     goto cleanup;
   }
-  
+  /*
   if ((info == NULL) && ((info = pam_oauth2_userinfo (options, oauth_token->token)) == NULL)) {
     PAM_OAUTH2_ERROR ("Failed tro retrive userinfo");
     result = PAM_AUTH_ERR;
     goto cleanup;
   }
   
-  /* Check username if required */
+  // Check username if required 
   if (check_username &&
       ((info->original_username == NULL) || (strcmp (info->original_username, username) != 0)) &&
       ((info->desired_username == NULL) || (strcmp (info->desired_username, username) != 0))) {
@@ -148,10 +151,10 @@ PAM_EXTERN int pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc, con
     goto cleanup;
   }
   
-  /* Forward desired username if there is one */
+  // Forward desired username if there is one 
   if (info->desired_username != NULL)
     pam_set_item (pamh, PAM_USER, info->desired_username);
-  
+  */
   /* Store some internal settings */
   pam_set_data (pamh, "pam_oauth2_token", oauth_token, pam_oauth2_token_freep);
   pam_set_data (pamh, "pam_oauth2_userinfo", info, pam_oauth2_userinfo_freep);

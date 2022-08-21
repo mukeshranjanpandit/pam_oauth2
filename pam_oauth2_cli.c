@@ -18,28 +18,45 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "pam_oauth2.h"
 
 int main (int argc, const char **argv) {
   struct pam_oauth2_options *options;
+  struct pam_oauth2_options *myoptions; //mksh
   struct pam_oauth2_token *token;
   struct pam_oauth2_userinfo *info;
   
   /* Try to parse the options */
+
   if ((options = pam_oauth2_options_parse (argc, argv)) == NULL)
     return 1;
-  
-  /* Request the token */
-  if (!(token = pam_oauth2_auth_password (options, "admin@example.com", "admin")))
+  //try token authentication
+  if ((myoptions = malloc (sizeof (struct pam_oauth2_options))) == NULL)
     return 1;
+
+  memset (myoptions, 0, sizeof (struct pam_oauth2_options));
+  myoptions->do_passwordauth = true;
   
-  printf ("Got token: %s\n", token->token);
+  myoptions->token_endpoint = "";
+
+  if (!(token = pam_oauth2_auth_password(myoptions, "", "")))
+  {
+    printf("\nReceiving token failed. token=%s",token->token);
+    return 1;
+  }
+  LDEBUG("\nReceiving token Successful. token=%s",token->token);
+  /* Request the token */
+  //if (!(token = pam_oauth2_auth_password (options, "admin@example.com", "admin")))
+    //return 1;
+  
+  LDEBUG ("Got token: %s\n", token->token);
   
   /* Request user-info */
-  if (!(info = pam_oauth2_userinfo (options, token->token))) {
-    free (token);
-    return 2;
-  }
+  //if (!(info = pam_oauth2_userinfo (myoptions, token->token))) {
+    //free (token);
+    //return 2;
+  //}
   
   /* Cleanup */
   free (token);
